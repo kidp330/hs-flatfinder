@@ -1,43 +1,78 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuantifiedConstraints #-}
 
-module PrepareUtils
-    ( OfferCategory
-    , parseCategories
-    , testLog
-    ) where
+module PrepareUtils where
 
 import GHC.Generics
-import Data.Text
-import qualified Data.Text.Lazy
-import Data.Text.Encoding
-import qualified Data.ByteString
-import qualified Data.ByteString.Lazy
-import Data.Aeson
+import qualified Data.Text as TS
+import qualified Data.Text.Lazy as TL
+import qualified Data.Text.Encoding as TE
+import qualified Data.ByteString as BS
+import qualified Data.ByteString.Lazy as BL
+import Data.Char
+import Data.Aeson as Aeson
+import Data.Map (Map)
+import Data.Foldable (fold)
+import qualified Data.Map as Map
 
-data OfferCategory = OfferCategory { ocId :: Word
-                                   , ocLabel :: Text
-                                   , ocParentId :: Word
-                                   , ocName :: Text
-                                   , ocNormalizedName :: Text
-                                   , ocPosition :: Word
-                                   , ocViewType :: Text -- change to enum maybe
-                                   , ocIconName :: Text -- enum
+type CategoryId = Word
+
+data OfferCategory = OfferCategory { ocId :: CategoryId
+                                   , ocParentId :: CategoryId
+                                   , ocNormalizedName :: TS.Text
                                    , ocLevel :: Word
-                                   , ocDisplayOrder :: Word
-                                   , ocChildren :: [Word]
-                                   , ocPath :: Text
-                                   , ocType :: Text -- enum
-                                   , ocIsAdding :: Bool
-                                   , ocIsSearch :: Bool
-                                   , ocIsOfferSeek :: Bool
-                                   , ocPrivateBusiness :: Bool
-                                   , ocPhotosMax :: Word
-                                   , ocImg :: Maybe Text
-                                   } deriving(Generic, Show)
+                                   , ocChildren :: [CategoryId]
+                                   , ocPath :: TS.Text
+                                   } deriving (Generic, Show)
+instance FromJSON OfferCategory where
+    parseJSON = genericParseJSON (defaultOptions { fieldLabelModifier =  camelCaseStripPrefix })
 
-parseCategories :: Text -> [OfferCategory]
-parseCategories = undefined
+data FilterOption = FilterOption { foCategories :: [CategoryId]
+                                 , foRanges :: [Int]
+                                 , foConstraints :: Map TS.Text TS.Text -- {"type":["string"|"integer"|"float"]}
+                                 } deriving (Generic, Show)
+instance FromJSON FilterOption where
+    parseJSON = genericParseJSON (defaultOptions { fieldLabelModifier =  camelCaseStripPrefix })
 
-testLog :: Text -> IO ()
-testLog = Data.ByteString.putStrLn . (maybe Data.ByteString.empty id) . decode . Data.ByteString.Lazy.fromStrict . Data.Text.Encoding.encodeUtf8
+data FilterEnumValue = FilterEnumValue { fevLabel :: TS.Text
+                                       , fevValue :: TS.Text
+                                       } deriving (Generic, Show)
+instance FromJSON FilterEnumValue where
+    parseJSON = genericParseJSON (defaultOptions { fieldLabelModifier =  camelCaseStripPrefix })
+
+type FilterParamName = TS.Text
+
+data CategoryFilter = CategoryFilter { cfType :: TS.Text -- enum
+                                     , cfLabel :: TS.Text
+                                     , cfUnit :: Maybe TS.Text
+                                     , cfValues :: [FilterEnumValue]
+                                     , cfOptions :: [FilterOption]
+                                     } deriving (Generic, Show)
+instance FromJSON CategoryFilter where
+    parseJSON = genericParseJSON (defaultOptions { fieldLabelModifier =  camelCaseStripPrefix })
+
+
+camelCaseStripPrefix :: String -> String
+camelCaseStripPrefix label = uncapitalize stripped
+    where stripped = dropWhile isLower label
+          uncapitalize "" = ""
+          uncapitalize (x:xs) = (toLower x : xs)
+
+stretchAssociative :: (Foldable f, Functor f, forall a. Monoid (f a)) => f (k, f v) -> f (k, v)
+stretchAssociative = fold . fmap stretch 
+    where stretch (key, vs) = fmap (\val -> (key, val)) vs
+
+categoryFilters :: BL.ByteString -> [(FilterParamName, CategoryFilter)]
+categoryFilters jsonBStr = 
+    case Aeson.eitherDecode jsonBStr of
+        Left err -> error $ "Failed to parse filters with the following message: " ++ err
+        Right m  -> stretchAssociative $ Map.toList m
+
+categoryMap :: BL.ByteString -> (Word -> Maybe OfferCategory) 
+categoryMap jsonBStr = 
+    case Aeson.eitherDecode jsonBStr of
+        Left err -> error $ "Failed to parse categories with the following message: " ++ err
+        Right m  -> 
+            let keyConvertedMap = Map.mapKeys (read :: String -> Word) m
+            in \x -> Map.lookup x keyConvertedMap
