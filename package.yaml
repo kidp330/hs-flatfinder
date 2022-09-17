@@ -21,11 +21,14 @@ description:         Please see the README on GitHub at <https://github.com/gith
 
 dependencies:
 - base >= 4.7 && < 5
+- containers
 - text
 - bytestring
 - utf8-string
 - aeson
 - req
+- tasty
+- tasty-hunit
 
 ghc-options:
 - -Wall
@@ -54,7 +57,7 @@ executables:
 
 tests:
   hs-flatfinder-test:
-    main:                Spec.hs
+    main:                Tests.hs
     source-dirs:         test
     ghc-options:
     - -threaded
