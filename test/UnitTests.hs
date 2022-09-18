@@ -10,10 +10,10 @@ import qualified PrepareUtils
 tests :: TestTree
 tests = testGroup "unit" [
     testGroup "camelCaseStripPrefix" [
-        testCase "T1" $ assertEqual "" "coherent"             (PrepareUtils.camelCaseStripPrefix "internallyCoherent"),
-        testCase "T2" $ assertEqual "" "ruedeSaint-Ghislaine" (PrepareUtils.camelCaseStripPrefix "RuedeSaint-Ghislaine"),
-        testCase "T3" $ assertEqual "" "04.03.52"             (PrepareUtils.camelCaseStripPrefix "04.03.52"),
-        testCase "T4" $ assertEqual "" ""                     (PrepareUtils.camelCaseStripPrefix "")
+        testCase "T1" $ assertEqual "" "coherent"             (PrepareUtils.camelcaseStripPrefix "internallyCoherent"),
+        testCase "T2" $ assertEqual "" "ruedeSaint-Ghislaine" (PrepareUtils.camelcaseStripPrefix "RuedeSaint-Ghislaine"),
+        testCase "T3" $ assertEqual "" "04.03.52"             (PrepareUtils.camelcaseStripPrefix "04.03.52"),
+        testCase "T4" $ assertEqual "" ""                     (PrepareUtils.camelcaseStripPrefix "")
     ],
     testGroup "Custom type parsing" [
     ]
