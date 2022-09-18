@@ -6,7 +6,6 @@ import Test.Tasty
 import Test.Tasty.HUnit
 
 import qualified PrepareUtils
-import qualified Data.Text.IO as TS
 
 tests :: TestTree
 tests = testGroup "unit" [
