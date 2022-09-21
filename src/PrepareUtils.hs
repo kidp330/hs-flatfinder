@@ -12,10 +12,15 @@ import qualified Data.ByteString.Lazy as BL
 import Data.List (singleton)
 import Data.Char
 import Data.Aeson as Aeson
+import Data.Aeson.Types as T
+import Data.Aeson.Key as K
 import Data.Map (Map)
 import Data.Foldable (fold)
 import qualified Text.Casing as Casing
 import qualified Data.Map as Map
+import qualified Network.HTTP.Simple as H
+import qualified Data.Bifunctor as BF
+import Const
 
 -- TODO refactor file structure and terrible naming schemes
 
@@ -176,20 +181,33 @@ createCategories = Map.mapKeys (read :: String -> Word) . parseCategoriesJson
 getCategory :: CategoryStruct -> CategoryId -> Maybe OfferCategory
 getCategory = flip Map.lookup
 
-parseLocations :: forall location. (FromJSON location, Show location) => JsonString -> [location]
-parseLocations jsonBStr = case (Aeson.eitherDecode jsonBStr :: Either String (Map TS.Text [location])) of
-    Left err -> error $ "Failed to parse locations with the following message: " ++ err
-    Right m  -> 
-        case Map.lookup "data" m of
-            Just locationList -> locationList
-            Nothing         -> error $ "Parsed location successfully but \"data\" key was not found\n\
-                                       \Parsed JSON:\n\n" ++ (take 200 $ show m)
+parseLocations :: forall location. (FromJSON location, Show location) => Aeson.Object -> Either TS.Text [location]
+parseLocations = (BF.first TS.pack) . T.parseEither (\obj -> (obj .: (K.fromString "data")) :: Parser [location])
 
-parseRegions :: JsonString -> [JsonRegion]
+
+    -- parseArrResult = case T.parseEither (.: K.fromString "data") obj of
+    --     Left err           -> error $ "Failed to parse locations with the following message: " ++ err
+    --     Right jsonArrayLoc -> (fromJSON jsonArrayLoc :: [location])
+    -- in case parseArrResult
+
+--     eitherRet = flip T.parseEither obj (\)
+--     in case eitherRet of
+        -- Left err -> error $ "Failed to parse locations with the following message: " ++ err
+--         Rigth locations -> locations
+
+-- = case () of
+--     Left err -> error $ "Failed to parse locations with the following message: " ++ err
+--     Right m  -> 
+--         case Map.lookup "data" m of
+--             Just locationList -> locationList
+--             Nothing         -> error $ "Parsed location successfully but \"data\" key was not found\n\
+--                                        \Parsed JSON:\n\n" ++ (take 200 $ show m)
+
+parseRegions :: Aeson.Object -> [JsonRegion]
 parseRegions = parseLocations
-parseCities :: JsonString -> [JsonCity]
+parseCities :: Aeson.Object -> [JsonCity]
 parseCities = parseLocations
-parseDistricts :: JsonString -> [JsonDistrict]
+parseDistricts :: Aeson.Object -> [JsonDistrict]
 parseDistricts = parseLocations
 
 -- TODO refactor this section
@@ -226,5 +244,28 @@ jsonRegionToRegion mjdistricts mjcities (JsonRegion rid name normalizedName) =
 createLocationTree :: (Map CityId [JsonDistrict]) -> (Map RegionId [JsonCity]) -> [JsonRegion] -> LocationStruct
 createLocationTree mjdistricts mjcities jregions = Map.fromList $ map convertRegion jregions
     where convertRegion jregion = (jrId jregion, jsonRegionToRegion mjdistricts mjcities jregion)
-
 -- TODO how to make sure these structures are not recomputed?
+
+createStructIO :: FilePath -> (JsonString -> struct) -> IO struct
+createStructIO fp createStruct = do
+    jsonBStr <- BL.readFile fp
+    return $ createStruct jsonBStr
+
+createCategoriesIO :: IO CategoryStruct
+createCategoriesIO = createStructIO "resources/categories.json" createCategories
+
+createFiltersIO :: IO FilterStruct
+createFiltersIO = createStructIO "resources/filters.json" createFilters
+
+createLocationsIO :: IO LocationStruct
+createLocationsIO = do
+    let request 
+            = H.setRequestPath Const.regionsPath
+            $ H.setRequestHost Const.mainUrl
+            $ H.defaultRequest
+    
+    response <- (H.httpJSON request :: IO (H.Response Aeson.Object))
+    let regions :: [Region] = parseRegions $ H.getResponseBody response
+
+    return undefined
+    
